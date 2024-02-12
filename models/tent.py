@@ -21,21 +21,25 @@ class Tent(ContinualModel):
     def get_parser() -> ArgumentParser:
         parser = ArgumentParser(description='Continual learning via'
                                 ' Fully Test-Time Adaptation.')
-        parser.add_argument('--episodic', type=int, required=True,
+        parser.add_argument('--episodic', type=int, default=0, choices=(0, 1),
                             help='Wheter to perform continual or episodic adaptation.')
-        parser.add_argument('--optimizer', type=str, required=True, choices=['adam', 'sgd'],
-                            help='The optimizer to use.')
-        parser.add_argument('--steps', type=float, required=True,
+        parser.add_argument('--steps', type=int, default=1,
                             help='The number of steps to perform during adaptation.')
         return parser
 
     def __init__(self, backbone, loss, args, transform):
         super().__init__(backbone, loss, args, transform)
-
-        self.configure_model()
-        self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
+        self.configured = False
+        if not self.args.train_source:
+            self.configure_model()
+            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
+            self.configured = True
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
+
+        if not self.configured:
+            self.configure_model()
+            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
 
         if self.args.episodic:
             self.reset()
@@ -69,7 +73,7 @@ class Tent(ContinualModel):
 
         # Enable gradient only for the nn.BatchNorm2d layers
         for module in self.net.modules():
-            if isinstance(module, nn.BatchNorm2d):
+            if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 module.requires_grad_(True)
                 module.track_running_stats(False)
                 module.running_mean = None
@@ -78,16 +82,18 @@ class Tent(ContinualModel):
         # Tents only collects affine transformation parameters
         params = []
         for _, module in self.net.named_modules():
-            if isinstance(module, nn.BatchNorm2d):
+            if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 for name, parameter in module.named_parameters():
                     if name in ['weight', 'bias']:
                         params.append(parameter)
 
         # Configure the optimizer
         if self.args.optimizer == 'adam':
-            self.opt = optim.Adam(params, lr=self.args.lr, betas=(self.args.betas, 0.999), weight_decay=self.args.weight_decay)
+            self.opt = optim.Adam(params, lr=self.args.lr, betas=(self.args.betas, 0.999), weight_decay=self.args.optim_wd)
         elif self.args.optimizer == 'sgd':
-            self.opt = optim.SGD(params, lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.weight_decay)
+            self.opt = optim.SGD(params, lr=self.args.lr, momentum=self.args.optim_mom, weight_decay=self.args.optim_wd)
+        elif self.args.optimizer == 'adamw':
+            self.opt = optim.AdamW(params, lr=self.args.lr, betas=(self.args.betas, 0.999), weight_decay=self.args.optim_wd)
 
         self.loss = EntropyLoss()
 
