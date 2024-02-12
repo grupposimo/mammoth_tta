@@ -39,14 +39,15 @@ class Tent(ContinualModel):
         if self.args.episodic:
             self.reset()
 
-        self.opt.zero_grad()
+        for _ in range(self.args.steps):
+            self.opt.zero_grad()
 
-        outputs = self.net(inputs)
+            outputs = self.net(inputs)
 
-        loss = softmax_entropy(outputs).mean(0)
-        loss.backward()
-        self.opt.step()
-        tot_loss = loss.item()
+            loss = softmax_entropy(outputs).mean(0)
+            loss.backward()
+            self.opt.step()
+            tot_loss = loss.item()
 
         return tot_loss
 
