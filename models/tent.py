@@ -10,6 +10,7 @@ import torch.optim as optim
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
+from utils.tta import EntropyLoss
 
 
 class Tent(ContinualModel):
@@ -34,22 +35,24 @@ class Tent(ContinualModel):
         self.configure_model()
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
 
-    def observe(self, inputs, labels):
+    def observe(self, inputs, labels, not_aug_inputs, epoch=None):
 
         if self.args.episodic:
             self.reset()
 
+        acc_loss = []
         for _ in range(self.args.steps):
             self.opt.zero_grad()
 
             outputs = self.net(inputs)
 
-            loss = softmax_entropy(outputs).mean(0)
+            loss = self.loss(outputs)
             loss.backward()
             self.opt.step()
             tot_loss = loss.item()
+            acc_loss += tot_loss
 
-        return tot_loss
+        return sum(acc_loss) / self.args.steps
 
     def reset(self):
         load_model_and_optimizer(self.net, self.opt, self.model_state, self.optimizer_state)
@@ -86,6 +89,8 @@ class Tent(ContinualModel):
         elif self.args.optimizer == 'sgd':
             self.opt = optim.SGD(params, lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.weight_decay)
 
+        self.loss = EntropyLoss()
+
 
 def copy_model_and_optimizer(model, optimizer):
     """Copy the model and optimizer states for resetting after adaptation."""
@@ -98,7 +103,3 @@ def load_model_and_optimizer(model, optimizer, model_state, optimizer_state):
     """Restore the model and optimizer states from copies."""
     model.load_state_dict(model_state, strict=True)
     optimizer.load_state_dict(optimizer_state)
-
-def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
-    """Entropy of softmax distribution from logits.""" 
-    return -(x.softmax(1) * x.log_softmax(1)).sum(1)
