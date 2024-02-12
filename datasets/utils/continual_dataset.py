@@ -253,3 +253,30 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
     setting.i += setting.N_CLASSES_PER_TASK
     setting.c_task += 1
     return train_loader, test_loader
+
+
+def store_tta_loaders(dataset: Dataset, setting: ContinualDataset):
+    """
+    Prepares the dataloaders for the continual tta setting.
+
+    Attributes:
+        dataset (Dataset): the dataset
+        setting (ContinualDataset): the setting of the dataset
+
+    Returns:
+        the training loaders
+    """
+    if not isinstance(dataset.targets, np.ndarray):
+        dataset.targets = np.array(dataset.targets)
+
+    if isinstance(dataset.targets, list) or not dataset.targets.dtype is torch.long:
+        dataset.targets = torch.tensor(dataset.targets, dtype=torch.long)
+
+    loader = create_seeded_dataloader(setting.args, dataset, batch_size=setting.args.batch_size, shuffle=True)
+
+    setting.test_loaders.append(loader)
+    setting.train_loader = loader
+
+    setting.c_task += 1
+
+    return loader

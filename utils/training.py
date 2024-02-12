@@ -3,18 +3,21 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from copy import deepcopy
 import math
+from pathlib import Path
 import sys
 from argparse import Namespace
+from copy import deepcopy
 from typing import Tuple
 
 import torch
+import torch.optim as optim
+from tqdm import tqdm
+
 from datasets import get_dataset
 from datasets.utils.continual_dataset import ContinualDataset
 from datasets.utils.gcl_dataset import GCLDataset
 from models.utils.continual_model import ContinualModel
-
 from utils import random_id
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
@@ -69,13 +72,15 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
         while True:
             try:
                 data = next(test_iter)
+                if dataset.SETTING == 'continual-tta':
+                    data = data[:2]
             except StopIteration:
                 break
             if model.args.debug_mode and i > model.get_debug_iters():
                 break
             inputs, labels = data
             inputs, labels = inputs.to(model.device), labels.to(model.device)
-            if 'class-il' not in model.COMPATIBILITY and 'general-continual' not in model.COMPATIBILITY:
+            if 'class-il' not in model.COMPATIBILITY and 'general-continual' not in model.COMPATIBILITY and 'continual-tta' not in model.COMPATIBILITY:
                 outputs = model(inputs, k)
             else:
                 outputs = model(inputs)
@@ -90,8 +95,7 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
                 _, pred = torch.max(outputs.data, 1)
                 correct_mask_classes += torch.sum(pred == labels).item()
 
-        accs.append(correct / total * 100
-                    if 'class-il' in model.COMPATIBILITY or 'general-continual' in model.COMPATIBILITY else 0)
+        accs.append(correct / total * 100 if 'class-il' in model.COMPATIBILITY or 'general-continual' in model.COMPATIBILITY or 'continual-tta' in model.COMPATIBILITY else 0)
         accs_mask_classes.append(correct_mask_classes / total * 100)
 
     model.net.train(status)
@@ -149,6 +153,47 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             logger.load(csvdump)
 
         print('Checkpoint Loaded!')
+
+    if args.train_source and not args.loadcheck and dataset.SETTING == 'continual-tta':
+        for e in range(model.args.n_epochs):
+            model.train()
+            train_set, test_set = dataset.get_source_dataset()
+            criterion = dataset.get_source_loss()
+            opt = optim.AdamW(model.parameters(), lr=args.lr)
+            sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.n_epochs)
+            train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
+            test_loader = torch.utils.data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
+            with tqdm(total=len(train_loader), desc=f"[EP{e}] Training on source dataset") as pbar:
+                for i, data in enumerate(train_loader):
+                    if args.debug_mode and i > model.get_debug_iters():
+                        break
+                    inputs, labels = data
+                    inputs, labels = inputs.to(model.device), labels.to(model.device, dtype=torch.long)
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    opt.zero_grad()
+                    loss.backward()
+                    opt.step()
+                    pbar.update()
+                    pbar.set_postfix({'loss': loss.item(), 'lr': opt.param_groups[0]['lr']})
+            sched.step()
+            total = 0
+            correct = 0
+            model.eval()
+            with torch.no_grad():
+                for i, data in tqdm(enumerate(test_loader), desc=f"[EP{e}] Testing on source dataset", total=len(test_loader)):
+                    if args.debug_mode and i > model.get_debug_iters():
+                        break
+                    inputs, labels = data
+                    inputs, labels = inputs.to(model.device), labels.to(model.device, dtype=torch.long)
+                    outputs = model(inputs)
+                    _, predicted = torch.max(outputs, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+                print(f"EP{e} acc = {correct/total:.2%}")
+            Path(f'./data/checkpoints').mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), f'./data/checkpoints/{args.dataset}_source.pt')
+            print(f"Source task accuracy: {correct/total:.2%}, saved to ./data/checkpoints/{args.dataset}_{e}_source.pt")
 
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)
 

@@ -40,11 +40,11 @@ class Tent(ContinualModel):
         if not self.configured:
             self.configure_model()
             self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
+            self.configured = True
 
         if self.args.episodic:
             self.reset()
-
-        acc_loss = []
+        acc = 0
         for _ in range(self.args.steps):
             self.opt.zero_grad()
 
@@ -53,10 +53,11 @@ class Tent(ContinualModel):
             loss = self.loss(outputs)
             loss.backward()
             self.opt.step()
-            tot_loss = loss.item()
-            acc_loss += tot_loss
+            acc += loss.item()
 
-        return sum(acc_loss) / self.args.steps
+        tot_loss = acc / self.args.steps
+
+        return tot_loss
 
     def reset(self):
         load_model_and_optimizer(self.net, self.opt, self.model_state, self.optimizer_state)
@@ -75,7 +76,7 @@ class Tent(ContinualModel):
         for module in self.net.modules():
             if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 module.requires_grad_(True)
-                module.track_running_stats(False)
+                module.track_running_stats(False) if isinstance(module, nn.BatchNorm2d) else None
                 module.running_mean = None
                 module.running_var = None
 

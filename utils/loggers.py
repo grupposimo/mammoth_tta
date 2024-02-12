@@ -231,6 +231,8 @@ class Logger:
             self.accs.append(mean_acc)
         elif self.setting == 'domain-il':
             self.accs.append(mean_acc)
+        elif self.setting == 'continual-tta':
+            self.accs.append(mean_acc)
         else:
             mean_acc_class_il, mean_acc_task_il = mean_acc
             self.accs.append(mean_acc_class_il)

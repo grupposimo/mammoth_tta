@@ -68,6 +68,8 @@ def add_experiment_args(parser: ArgumentParser) -> None:
                         help='Train model on Joint (single task)?')
     parser.add_argument('--label_perc', type=float, default=1,
                         help='Percentage in (0-1] of labeled examples per task.')
+    parser.add_argument('--train_source', type=float, default=0, choices=[0, 1],
+                        help='Train on source task (continual-tta)')
 
 
 def add_management_args(parser: ArgumentParser) -> None:
