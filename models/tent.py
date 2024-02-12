@@ -3,10 +3,13 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 import torch.nn as nn
+import torch.optim as optim
 from torch.nn import functional as F
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
+
+from copy import deepcopy
 
 class Tent(ContinualModel):
     NAME = 'tent'
@@ -16,17 +19,24 @@ class Tent(ContinualModel):
     def get_parser() -> ArgumentParser:
         parser = ArgumentParser(description='Continual learning via'
                                 ' Fully Test-Time Adaptation.')
-        add_rehearsal_args(parser)
-        parser.add_argument('--alpha', type=float, required=True,
-                            help='Penalty weight.')
-        parser.add_argument('--beta', type=float, required=True,
-                            help='Penalty weight.')
+        parser.add_argument('--episodic', type=int, required=True,
+                            help='Wheter to perform continual or episodic adaptation.')
+        parser.add_argument('--optimizer', type=str, required=True, choices=['adam', 'sgd'],
+                            help='The optimizer to use.')
+        parser.add_argument('--steps', type=float, required=True,
+                            help='The number of steps to perform during adaptation.')
         return parser
 
     def __init__(self, backbone, loss, args, transform):
         super().__init__(backbone, loss, args, transform)
 
-    def observe(self, inputs, labels, not_aug_inputs, epoch=None):
+        self.net, self.opt = configure_model(self.net, self.args)
+        self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
+
+    def observe(self, inputs, labels):
+
+        if self.args.episodic:
+            self.reset()
 
         self.opt.zero_grad()
 
@@ -34,55 +44,56 @@ class Tent(ContinualModel):
 
         loss = self.loss(outputs, labels)
         loss.backward()
+        self.opt.step()
         tot_loss = loss.item()
 
-        if not self.buffer.is_empty():
-            buf_inputs, _, buf_logits = self.buffer.get_data(self.args.minibatch_size, transform=self.transform, device=self.device)
-
-            buf_outputs = self.net(buf_inputs)
-            loss_mse = self.args.alpha * F.mse_loss(buf_outputs, buf_logits)
-            loss_mse.backward()
-            tot_loss += loss_mse.item()
-
-            buf_inputs, buf_labels, _ = self.buffer.get_data(self.args.minibatch_size, transform=self.transform, device=self.device)
-
-            buf_outputs = self.net(buf_inputs)
-            loss_ce = self.args.beta * self.loss(buf_outputs, buf_labels)
-            loss_ce.backward()
-            tot_loss += loss_ce.item()
-
-        self.opt.step()
-
-        self.buffer.add_data(examples=not_aug_inputs,
-                             labels=labels,
-                             logits=outputs.data)
-
         return tot_loss
+    
+    def reset(self):
+        pass
 
-    def configure_model(model):
-        '''
-        Tent simply functions in 2 steps: prepare the model by disabling gradient to all module but the batch norm.
-        Then collect affine transformation parameters to update.
-        '''
-        # Train mode
-        model.train()
-        # Disable all parameters gradiants
-        model.requires_grad_(False)
+def configure_model(model, args):
+    """
+    Tent simply functions in 2 steps: prepare the model by disabling gradient to all module but the batch norm.
+    Then collect affine transformation parameters to update.
+    """
+    # Train mode
+    model.train()
+    # Disable all parameters gradiants
+    model.requires_grad_(False)
 
-        # Enable gradient only for the nn.BatchNorm2d layers
-        for module in model.modules():
-            if isinstance(module, nn.BatchNorm2d):
-                module.requires_grad_(True)
-                module.track_running_stats(False)
-                module.running_mean = None
-                module.running_var = None
+    # Enable gradient only for the nn.BatchNorm2d layers
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.requires_grad_(True)
+            module.track_running_stats(False)
+            module.running_mean = None
+            module.running_var = None
 
-        # Tents only collects affine transformation parameters
-        params = []
-        for _, module in model.named_modules():
-            if isinstance(module, nn.BatchNorm2d):
-                for name, parameter in module.named_parameters():
-                    if name in ['weight', 'bias']:
-                        params.append(parameter)
+    # Tents only collects affine transformation parameters
+    params = []
+    for _, module in model.named_modules():
+        if isinstance(module, nn.BatchNorm2d):
+            for name, parameter in module.named_parameters():
+                if name in ['weight', 'bias']:
+                    params.append(parameter)
 
-        return model, params
+    # Configure the optimizer
+    if args.optimizer == 'adam':
+        opt = optim.Adam(params, lr=args.lr, betas=(args.betas, 0.999), weight_decay=args.weight_decay)
+    elif args.optimizer == 'sgd':
+        opt = optim.SGD(params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+
+    return model, opt
+
+def copy_model_and_optimizer(model, optimizer):
+    """Copy the model and optimizer states for resetting after adaptation."""
+    model_state = deepcopy(model.state_dict())
+    optimizer_state = deepcopy(optimizer.state_dict())
+    return model_state, optimizer_state
+
+
+def load_model_and_optimizer(model, optimizer, model_state, optimizer_state):
+    """Restore the model and optimizer states from copies."""
+    model.load_state_dict(model_state, strict=True)
+    optimizer.load_state_dict(optimizer_state)
