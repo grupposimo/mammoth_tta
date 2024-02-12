@@ -60,6 +60,10 @@ class Tent(ContinualModel):
         return tot_loss
 
     def configure_model(model):
+        '''
+        Tent simply functions in 2 steps: prepare the model by disabling gradient to all module but the batch norm.
+        Then collect affine transformation parameters to update.
+        '''
         # Train mode
         model.train()
         # Disable all parameters gradiants
