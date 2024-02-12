@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 from copy import deepcopy
 
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
@@ -42,7 +43,7 @@ class Tent(ContinualModel):
 
         outputs = self.net(inputs)
 
-        loss = self.loss(outputs, labels)
+        loss = softmax_entropy(outputs).mean(0)
         loss.backward()
         self.opt.step()
         tot_loss = loss.item()
@@ -96,3 +97,7 @@ def load_model_and_optimizer(model, optimizer, model_state, optimizer_state):
     """Restore the model and optimizer states from copies."""
     model.load_state_dict(model_state, strict=True)
     optimizer.load_state_dict(optimizer_state)
+
+def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
+    """Entropy of softmax distribution from logits.""" 
+    return -(x.softmax(1) * x.log_softmax(1)).sum(1)
