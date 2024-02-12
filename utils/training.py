@@ -155,14 +155,14 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         print('Checkpoint Loaded!')
 
     if args.train_source and not args.loadcheck and dataset.SETTING == 'continual-tta':
+        opt = optim.AdamW(model.parameters(), lr=args.lr)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.n_epochs)
+        criterion = dataset.get_source_loss()
+        model.train()
+        train_set, test_set = dataset.get_source_dataset()
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
+        test_loader = torch.utils.data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
         for e in range(model.args.n_epochs):
-            model.train()
-            train_set, test_set = dataset.get_source_dataset()
-            criterion = dataset.get_source_loss()
-            opt = optim.AdamW(model.parameters(), lr=args.lr)
-            sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.n_epochs)
-            train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
-            test_loader = torch.utils.data.DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
             with tqdm(total=len(train_loader), desc=f"[EP{e}] Training on source dataset") as pbar:
                 for i, data in enumerate(train_loader):
                     if args.debug_mode and i > model.get_debug_iters():
