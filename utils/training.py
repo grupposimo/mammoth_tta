@@ -145,7 +145,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             model.meta_begin_task(dataset)
             model.meta_end_task(dataset)
 
-    if args.loadcheck is not None:
+    if args.loadcheck is not None and not dataset.SETTING == 'continual-tta':
         model, past_res = mammoth_load_checkpoint(args, model)
 
         if not args.disable_log and past_res is not None:
@@ -192,7 +192,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                     correct += (predicted == labels).sum().item()
                 print(f"EP{e} acc = {correct/total:.2%}")
             Path(f'./data/checkpoints').mkdir(parents=True, exist_ok=True)
-            torch.save(model.state_dict(), f'./data/checkpoints/{args.dataset}_source.pt')
+            torch.save(model.state_dict(), f'./data/checkpoints/{args.dataset}_{e}_source.pt')
             print(f"Source task accuracy: {correct/total:.2%}, saved to ./data/checkpoints/{args.dataset}_{e}_source.pt")
 
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)

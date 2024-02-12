@@ -3,6 +3,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 from copy import deepcopy
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -30,6 +31,9 @@ class Tent(ContinualModel):
     def __init__(self, backbone, loss, args, transform):
         super().__init__(backbone, loss, args, transform)
         self.configured = False
+        if self.args.loadcheck:
+            assert Path(self.args.loadcheck).resolve().exists(), f"Checkpoint {self.args.loadcheck} not found"
+            self.load_state_dict(torch.load(Path(self.args.loadcheck).resolve()))
         if not self.args.train_source:
             self.configure_model()
             self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
@@ -76,7 +80,8 @@ class Tent(ContinualModel):
         for module in self.net.modules():
             if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 module.requires_grad_(True)
-                module.track_running_stats(False) if isinstance(module, nn.BatchNorm2d) else None
+                if isinstance(module, nn.BatchNorm2d):
+                    module.track_running_stats = False
                 module.running_mean = None
                 module.running_var = None
 

@@ -1,4 +1,5 @@
 
+from pathlib import Path
 import random
 import string
 import torch
@@ -146,10 +147,10 @@ def mammoth_load_checkpoint(args, model: torch.nn.Module, ignore_classifier=Fals
 
         print(f'Checkpoint downloaded to {args.loadcheck}')
     else:
-        if not os.path.exists(args.loadcheck):
+        if not Path(args.loadcheck).resolve():
             raise ValueError('The given checkpoint does not exist.')
 
-    saved_obj = torch.load(args.loadcheck, map_location=torch.device("cpu"))
+    saved_obj = torch.load(Path(args.loadcheck).resolve(), map_location=torch.device("cpu"))
 
     if 'args' in saved_obj and 'model' in saved_obj:
         _check_loaded_args(args, saved_obj['args'])
