@@ -11,7 +11,7 @@ import torch.optim as optim
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
-from utils.tta import EntropyLoss
+from utils.tta_losses import EntropyLoss
 
 
 class Tent(ContinualModel):

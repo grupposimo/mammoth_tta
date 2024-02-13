@@ -52,3 +52,11 @@ def train_on_source_dataset(model, dataset, args):
     Path(f'./data/checkpoints').mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), f'./data/checkpoints/{args.dataset}_{e}_source.pt')
     print(f"Source task accuracy: {correct/total:.2%}, saved to ./data/checkpoints/{args.dataset}_{e}_source.pt")
+
+
+class EmaEntropyLoss(nn.Module):
+    def __init__(self):
+        super(EmaEntropyLoss, self).__init__()
+
+    def forward(x, x_ema):
+        return torch.mean(-(x_ema.softmax(1) * x.log_softmax(1)).sum(1), 0)
