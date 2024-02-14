@@ -1,20 +1,12 @@
 from pathlib import Path
+
 import torch
-import torch.nn as nn
 from tqdm import tqdm
-
-
-class EntropyLoss(nn.Module):
-    def __init__(self):
-        super(EntropyLoss, self).__init__()
-
-    def forward(self, x):
-        return torch.mean(-(x.softmax(1) * x.log_softmax(1)).sum(1), 0)
 
 
 def train_on_source_dataset(model, dataset, args):
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.n_epochs)
+    # sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.n_epochs)
     criterion = dataset.get_source_loss()
     model.train()
     train_set, test_set = dataset.get_source_dataset()
@@ -34,7 +26,7 @@ def train_on_source_dataset(model, dataset, args):
                 opt.step()
                 pbar.update()
                 pbar.set_postfix({'loss': loss.item(), 'lr': opt.param_groups[0]['lr']})
-        sched.step()
+        # sched.step()
         total = 0
         correct = 0
         model.eval()
@@ -49,14 +41,8 @@ def train_on_source_dataset(model, dataset, args):
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
         print(f"EP{e} acc = {correct/total:.2%}")
-    Path(f'./data/checkpoints').mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), f'./data/checkpoints/{args.dataset}_{e}_source.pt')
-    print(f"Source task accuracy: {correct/total:.2%}, saved to ./data/checkpoints/{args.dataset}_{e}_source.pt")
 
-
-class EmaEntropyLoss(nn.Module):
-    def __init__(self):
-        super(EmaEntropyLoss, self).__init__()
-
-    def forward(x, x_ema):
-        return torch.mean(-(x_ema.softmax(1) * x.log_softmax(1)).sum(1), 0)
+        p = Path(f'./data/checkpoints/no_sched_{args.dataset}_{e}_source.pt').resolve()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), p)
+        print(f"Source task accuracy: {correct/total:.2%}, saved to {p}")

@@ -4,14 +4,12 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from pathlib import Path
 import sys
 from argparse import Namespace
 from copy import deepcopy
 from typing import Tuple
 
 import torch
-import torch.optim as optim
 from tqdm import tqdm
 
 from datasets import get_dataset
@@ -22,7 +20,7 @@ from utils import random_id
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
-from utils.tta import train_on_source_dataset
+from utils.tta.tta_utils import train_on_source_dataset
 
 try:
     import wandb
@@ -64,7 +62,7 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
     model.net.eval()
     accs, accs_mask_classes = [], []
     n_classes = dataset.get_offsets()[1]
-    for k, test_loader in enumerate(dataset.test_loaders):
+    for k, test_loader in tqdm(enumerate(dataset.test_loaders), desc="Evaluating model on tasks", total=len(dataset.test_loaders)):
         if last and k < len(dataset.test_loaders) - 1:
             continue
         correct, correct_mask_classes, total = 0.0, 0.0, 0.0
@@ -140,6 +138,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     if not args.disable_log:
         logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
 
+    if dataset.SETTING == 'continual-tta' and args.source_baseline_tta:
+        args.start_from = dataset.N_TASKS - 1
+        args.n_epochs = 0
+
     if args.start_from is not None:
         for i in range(args.start_from):
             train_loader, _ = dataset.get_data_loaders()
@@ -173,6 +175,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     end_task = dataset.N_TASKS if args.stop_after is None else args.stop_after
 
     torch.cuda.empty_cache()
+
+    if dataset.SETTING == 'continual-tta':
+        model.configure_model()
+
     for t in range(start_task, end_task):
         model.net.train()
         train_loader, test_loader = dataset.get_data_loaders()

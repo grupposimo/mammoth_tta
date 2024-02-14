@@ -11,7 +11,7 @@ import torch.optim as optim
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
-from utils.tta_losses import EntropyLoss
+from utils.tta.tta_losses import EntropyLoss
 
 
 class Tent(ContinualModel):
@@ -30,21 +30,12 @@ class Tent(ContinualModel):
 
     def __init__(self, backbone, loss, args, transform):
         super().__init__(backbone, loss, args, transform)
-        self.configured = False
+
         if self.args.loadcheck:
             assert Path(self.args.loadcheck).resolve().exists(), f"Checkpoint {self.args.loadcheck} not found"
             self.load_state_dict(torch.load(Path(self.args.loadcheck).resolve()))
-        if not self.args.train_source:
-            self.configure_model()
-            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
-            self.configured = True
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
-
-        if not self.configured:
-            self.configure_model()
-            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
-            self.configured = True
 
         if self.args.episodic:
             self.reset()
@@ -102,6 +93,8 @@ class Tent(ContinualModel):
             self.opt = optim.AdamW(params, lr=self.args.lr, betas=(self.args.betas, 0.999), weight_decay=self.args.optim_wd)
 
         self.loss = EntropyLoss()
+
+        self.model_state, self.optimizer_state = copy_model_and_optimizer(self.net, self.opt)
 
 
 def copy_model_and_optimizer(model, optimizer):
