@@ -6,8 +6,8 @@
 from argparse import Namespace
 from typing import Tuple
 
-import torch
 import numpy as np
+import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as scheds
 from torch.utils.data import DataLoader, Dataset
@@ -255,7 +255,7 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
     return train_loader, test_loader
 
 
-def store_tta_loaders(dataset: Dataset, setting: ContinualDataset):
+def store_tta_loaders(train_dataset: Dataset, test_dataset: Dataset, setting: ContinualDataset):
     """
     Prepares the dataloaders for the continual tta setting.
 
@@ -266,17 +266,22 @@ def store_tta_loaders(dataset: Dataset, setting: ContinualDataset):
     Returns:
         the training loaders
     """
-    if not isinstance(dataset.targets, np.ndarray):
-        dataset.targets = np.array(dataset.targets)
+    if not isinstance(train_dataset.targets, np.ndarray):
+        train_dataset.targets = np.array(train_dataset.targets)
+    if not isinstance(test_dataset.targets, np.ndarray):
+        test_dataset.targets = np.array(test_dataset.targets)
 
-    if isinstance(dataset.targets, list) or not dataset.targets.dtype is torch.long:
-        dataset.targets = torch.tensor(dataset.targets, dtype=torch.long)
+    if isinstance(train_dataset.targets, list) or not train_dataset.targets.dtype is torch.long:
+        train_dataset.targets = torch.tensor(train_dataset.targets, dtype=torch.long)
+    if isinstance(test_dataset.targets, list) or not test_dataset.targets.dtype is torch.long:
+        test_dataset.targets = torch.tensor(test_dataset.targets, dtype=torch.long)
 
-    loader = create_seeded_dataloader(setting.args, dataset, batch_size=setting.args.batch_size, shuffle=True)
+    train_loader = create_seeded_dataloader(setting.args, train_dataset, batch_size=setting.args.batch_size, shuffle=True)
+    test_loader = create_seeded_dataloader(setting.args, test_dataset, batch_size=setting.args.batch_size, shuffle=False)
 
-    setting.test_loaders.append(loader)
-    setting.train_loader = loader
+    setting.test_loaders.append(test_loader)
+    setting.train_loader = train_loader
 
     setting.c_task += 1
 
-    return loader
+    return train_loader, test_loader

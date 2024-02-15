@@ -78,7 +78,7 @@ class Cotta(ContinualModel):
             if self.args.restore:
                 for nm, m in self.net.named_modules():
                     for npp, p in m.named_parameters():
-                        if npp in ['weight', 'bias'] and p.requires_grad:
+                        if npp in ('weight', 'bias') and p.requires_grad:
                             mask = (torch.rand(p.shape) < self.args.rst_m).float().cuda()
                             with torch.no_grad():
                                 p.data = self.model_state[f"{nm}.{npp}"] * mask + p * (1. - mask)
@@ -106,7 +106,7 @@ class Cotta(ContinualModel):
         for module in self.net.modules():
             if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 module.requires_grad_(True)
-                module.track_running_stats(False) if isinstance(module, nn.BatchNorm2d) else None
+                module.track_running_stats = False if isinstance(module, nn.BatchNorm2d) else None
                 module.running_mean = None
                 module.running_var = None
             else:
@@ -117,7 +117,7 @@ class Cotta(ContinualModel):
         for _, module in self.net.named_modules():
             if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 for name, parameter in module.named_parameters():
-                    if name in ['weight', 'bias']:
+                    if name in ('weight', 'bias'):
                         params.append(parameter)
 
         # Configure the optimizer
@@ -162,7 +162,7 @@ def get_tta_transforms(gaussian_std: float = 0.005, soft=False, clip_inputs=Fals
     clip_min, clip_max = 0.0, 1.0
 
     p_hflip = 0.5
-
+    from torchvision.transforms import InterpolationMode
     tta_transforms = transforms.Compose([
         my_transforms.Clip(0.0, 1.0),
         my_transforms.ColorJitterPro(
@@ -178,8 +178,7 @@ def get_tta_transforms(gaussian_std: float = 0.005, soft=False, clip_inputs=Fals
             translate=(1 / 16, 1 / 16),
             scale=(0.95, 1.05) if soft else (0.9, 1.1),
             shear=None,
-            resample=PIL.Image.BILINEAR,
-            fillcolor=None
+            interpolation=InterpolationMode.BILINEAR,
         ),
         transforms.GaussianBlur(kernel_size=5, sigma=[0.001, 0.25] if soft else [0.001, 0.5]),
         transforms.CenterCrop(size=n_pixels),

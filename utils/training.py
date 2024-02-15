@@ -7,6 +7,7 @@ import math
 import sys
 from argparse import Namespace
 from copy import deepcopy
+from pathlib import Path
 from typing import Tuple
 
 import torch
@@ -20,7 +21,7 @@ from utils import random_id
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
-from utils.tta.tta_utils import train_on_source_dataset
+from utils.tta.tta_utils import sanity_check, train_on_source_dataset
 
 try:
     import wandb
@@ -63,6 +64,7 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
     accs, accs_mask_classes = [], []
     n_classes = dataset.get_offsets()[1]
     for k, test_loader in tqdm(enumerate(dataset.test_loaders), desc="Evaluating model on tasks", total=len(dataset.test_loaders)):
+
         if last and k < len(dataset.test_loaders) - 1:
             continue
         correct, correct_mask_classes, total = 0.0, 0.0, 0.0
@@ -159,6 +161,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
     if args.train_source and not args.loadcheck and dataset.SETTING == 'continual-tta':
         train_on_source_dataset(model, dataset, args)
+        return
 
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)
 
@@ -177,7 +180,14 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     torch.cuda.empty_cache()
 
     if dataset.SETTING == 'continual-tta':
-        model.configure_model()
+        if args.loadcheck:
+            p = Path(args.loadcheck).resolve()
+            assert p.exists(), f"Checkpoint {p} not found"
+            model.load_state_dict(torch.load(p))
+        sanity_check(model, dataset)
+        if not args.source_baseline_tta:
+            model.configure_model()
+            sanity_check(model, dataset)
 
     for t in range(start_task, end_task):
         model.net.train()

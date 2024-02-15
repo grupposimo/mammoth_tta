@@ -31,23 +31,19 @@ class Tent(ContinualModel):
     def __init__(self, backbone, loss, args, transform):
         super().__init__(backbone, loss, args, transform)
 
-        if self.args.loadcheck:
-            assert Path(self.args.loadcheck).resolve().exists(), f"Checkpoint {self.args.loadcheck} not found"
-            self.load_state_dict(torch.load(Path(self.args.loadcheck).resolve()))
-
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
 
         if self.args.episodic:
             self.reset()
         acc = 0
         for _ in range(self.args.steps):
-            self.opt.zero_grad()
 
             outputs = self.net(inputs)
 
             loss = self.loss(outputs)
             loss.backward()
             self.opt.step()
+            self.opt.zero_grad()
             acc += loss.item()
 
         tot_loss = acc / self.args.steps
@@ -81,16 +77,16 @@ class Tent(ContinualModel):
         for _, module in self.net.named_modules():
             if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
                 for name, parameter in module.named_parameters():
-                    if name in ['weight', 'bias']:
+                    if name in ('weight', 'bias'):
                         params.append(parameter)
 
         # Configure the optimizer
         if self.args.optimizer == 'adam':
-            self.opt = optim.Adam(params, lr=self.args.lr, betas=(self.args.betas, 0.999), weight_decay=self.args.optim_wd)
+            self.opt = optim.Adam(params, lr=self.args.lr, betas=(0.9, 0.999), weight_decay=self.args.optim_wd)
         elif self.args.optimizer == 'sgd':
             self.opt = optim.SGD(params, lr=self.args.lr, momentum=self.args.optim_mom, weight_decay=self.args.optim_wd)
         elif self.args.optimizer == 'adamw':
-            self.opt = optim.AdamW(params, lr=self.args.lr, betas=(self.args.betas, 0.999), weight_decay=self.args.optim_wd)
+            self.opt = optim.AdamW(params, lr=self.args.lr, betas=(0.9, 0.999), weight_decay=self.args.optim_wd)
 
         self.loss = EntropyLoss()
 

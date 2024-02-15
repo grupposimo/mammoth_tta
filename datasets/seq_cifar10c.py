@@ -12,9 +12,11 @@ import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
+from timm.models.vision_transformer import vit_base_patch16_224
 from torch.utils.data import Dataset
 from torchvision.datasets import CIFAR10
 from torchvision.datasets.utils import download_and_extract_archive
+from torchvision.transforms.functional import InterpolationMode
 
 from backbone.ResNet18 import resnet18
 from datasets.seq_cifar10 import MyCIFAR10
@@ -22,8 +24,6 @@ from datasets.seq_tinyimagenet import base_path
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_tta_loaders)
-from torchvision.transforms.functional import InterpolationMode
-from timm.models.vision_transformer import vit_base_patch16_224
 
 CORRUPTIONS = ('gaussian_noise', 'shot_noise', 'impulse_noise',
                'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur',
@@ -46,7 +46,7 @@ class CIFAR10C(Dataset):
     url = "https://zenodo.org/records/2535967/files/CIFAR-10-C.tar?download=1"
     tgz_md5 = "56bf5dcef84df0e2308c6dcbcbbd8499"
 
-    def __init__(self, root, corruption, transform=None, target_transform=None,
+    def __init__(self, root, corruption, train, transform=None, target_transform=None,
                  download=True, severity=5) -> None:
         self.corruption = corruption
         self.severity = severity
@@ -54,6 +54,7 @@ class CIFAR10C(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.not_aug_transform = transforms.Compose([transforms.ToTensor()])
+        self.train = train
         assert 1 <= severity <= 5
         n_total_cifar = 10000
 
@@ -108,10 +109,16 @@ class CIFAR10C(Dataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        if hasattr(self, 'logits'):
-            return img, target, not_aug_img, self.logits[index]
+        if self.train:
+            if hasattr(self, 'logits'):
+                return img, target, not_aug_img, self.logits[index]
 
-        return img, target, not_aug_img
+            return img, target, not_aug_img
+        else:
+            if hasattr(self, 'logits'):
+                return img, target, self.logits[index]
+
+            return img, target
 
 
 class SequentialCIFAR10C(ContinualDataset):
@@ -146,13 +153,14 @@ class SequentialCIFAR10C(ContinualDataset):
 
     def get_data_loaders(self) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
         """Class method that returns the train and test loaders."""
-        transform = self.TRANSFORM
 
-        train_dataset = CIFAR10C(base_path() + 'CIFAR10C', corruption=CORRUPTIONS[self.c_task + 1],
-                                 download=True, transform=transform)
+        train_dataset = CIFAR10C(base_path() + 'CIFAR10C', train=True, corruption=CORRUPTIONS[self.c_task + 1],
+                                 download=True, transform=self.TEST_TRANSFORM)
+        test_dataset = CIFAR10C(base_path() + 'CIFAR10C', train=False, corruption=CORRUPTIONS[self.c_task + 1],
+                                download=True, transform=self.TEST_TRANSFORM)
         print(CORRUPTIONS[self.c_task + 1])
-        train = store_tta_loaders(train_dataset, self)
-        return train, None
+        train, test = store_tta_loaders(train_dataset, test_dataset, self)
+        return train, test
 
     def get_source_dataset(self):
 
@@ -188,11 +196,11 @@ class SequentialCIFAR10C(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 50
+        return 1
 
     @staticmethod
     def get_batch_size():
-        return 64
+        return 200
 
 
 class SequentialCIFAR10C224(SequentialCIFAR10C):
