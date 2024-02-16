@@ -52,16 +52,19 @@ def sanity_check(model, dataset):
     model_status = model.training
     total = 0
     correct = 0
-    model.eval()
-    _, test_set = dataset.get_source_dataset()
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=128, shuffle=False, num_workers=4)
-    with torch.no_grad():
-        for data in tqdm(test_loader, desc=f"Sanity checking", total=len(test_loader)):
-            inputs, labels = data
-            inputs, labels = inputs.to(model.device), labels.to(model.device, dtype=torch.long)
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    model.train(model_status)
-    print(f"Sanity check accuracy:  {correct / total:.2%}")
+    if hasattr(dataset, 'get_source_dataset'):
+        model.eval()
+        _, test_set = dataset.get_source_dataset()
+        test_loader = torch.utils.data.DataLoader(test_set, batch_size=128, shuffle=False, num_workers=4)
+        with torch.no_grad():
+            for data in tqdm(test_loader, desc=f"Sanity checking", total=len(test_loader)):
+                inputs, labels = data
+                inputs, labels = inputs.to(model.device), labels.to(model.device, dtype=torch.long)
+                outputs = model(inputs)
+                _, predicted = torch.max(outputs, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+        model.train(model_status)
+        print(f"Sanity check accuracy:  {correct / total:.2%}")
+    else:
+        print("No source dataset, skipping sanity check")

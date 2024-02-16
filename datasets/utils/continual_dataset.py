@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from argparse import Namespace
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -255,7 +255,7 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
     return train_loader, test_loader
 
 
-def store_tta_loaders(train_dataset: Dataset, test_dataset: Dataset, setting: ContinualDataset):
+def store_tta_loaders(train_dataset: Dataset, test_dataset: Optional[Dataset], setting: ContinualDataset):
     """
     Prepares the dataloaders for the continual tta setting.
 
@@ -268,16 +268,20 @@ def store_tta_loaders(train_dataset: Dataset, test_dataset: Dataset, setting: Co
     """
     if not isinstance(train_dataset.targets, np.ndarray):
         train_dataset.targets = np.array(train_dataset.targets)
-    if not isinstance(test_dataset.targets, np.ndarray):
-        test_dataset.targets = np.array(test_dataset.targets)
 
     if isinstance(train_dataset.targets, list) or not train_dataset.targets.dtype is torch.long:
         train_dataset.targets = torch.tensor(train_dataset.targets, dtype=torch.long)
-    if isinstance(test_dataset.targets, list) or not test_dataset.targets.dtype is torch.long:
-        test_dataset.targets = torch.tensor(test_dataset.targets, dtype=torch.long)
+
+    if test_dataset is not None:
+        if not isinstance(test_dataset.targets, np.ndarray):
+            test_dataset.targets = np.array(test_dataset.targets)
+        if isinstance(test_dataset.targets, list) or not test_dataset.targets.dtype is torch.long:
+            test_dataset.targets = torch.tensor(test_dataset.targets, dtype=torch.long)
+        test_loader = create_seeded_dataloader(setting.args, test_dataset, batch_size=setting.args.batch_size, shuffle=False)
+    else:
+        test_loader = create_seeded_dataloader(setting.args, train_dataset, batch_size=setting.args.batch_size, shuffle=False)
 
     train_loader = create_seeded_dataloader(setting.args, train_dataset, batch_size=setting.args.batch_size, shuffle=True)
-    test_loader = create_seeded_dataloader(setting.args, test_dataset, batch_size=setting.args.batch_size, shuffle=False)
 
     setting.test_loaders.append(test_loader)
     setting.train_loader = train_loader
