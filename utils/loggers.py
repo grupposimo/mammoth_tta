@@ -88,6 +88,7 @@ def print_mean_accuracy(accs: np.ndarray, task_number: int,
             print('\tRaw accuracy values: Domain-IL {}'.format(accs[0]), file=sys.stderr)
         elif setting == 'continual-tta':
             mean_acc, _ = mean_acc
+            prefix = f"Accuracy (epoch {epoch})" if epoch is not None else "Accuracy"
             print(f'\n{prefix} for {task_number} task(s): [Continual-TTA]: {round(mean_acc, 2)} % (err: {round(100 - mean_acc, 2)} %)', file=sys.stderr)
             print(f'\tRaw accuracy values: [{", ".join([str(round(a, 2)) for a in accs[0]])}] (err: [{", ".join([str(round(100 - a, 2)) for a in accs[0]])}])', file=sys.stderr)
         else:
